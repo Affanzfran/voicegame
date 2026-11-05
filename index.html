@@ -45,6 +45,8 @@
     }
     .prompt-box p { margin: 5px 0; color: #D6BD98; }
     .word-highlight { color: #FFE66D; font-size: 22px; font-weight: bold; }
+    
+    /* Dynamic Mic Button Styles */
     .btn-mic {
       background: linear-gradient(135deg, #FF6B6B, #FFE66D);
       border: none;
@@ -55,10 +57,53 @@
       border-radius: 50px;
       cursor: pointer;
       box-shadow: 0 6px 16px rgba(0,0,0,0.3);
-      transition: transform 0.2s;
+      transition: all 0.3s ease;
       margin-top: 10px;
     }
     .btn-mic:hover { transform: scale(1.05); }
+
+    /* Listening state animation */
+    .btn-mic.listening {
+      background: #FF4D4D !important;
+      color: #FFFFFF !important;
+      animation: pulse 1.2s infinite;
+      box-shadow: 0 0 20px rgba(255, 77, 77, 0.8);
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.08); }
+      100% { transform: scale(1); }
+    }
+
+    /* Soundwave Equalizer Animation */
+    .soundwave {
+      display: none;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+      margin-top: 15px;
+      height: 30px;
+    }
+    .soundwave.active { display: flex; }
+    .bar {
+      width: 6px;
+      height: 10px;
+      background: #FFE66D;
+      border-radius: 3px;
+      animation: wave 0.8s infinite ease-in-out;
+    }
+    .bar:nth-child(1) { animation-delay: 0.0s; }
+    .bar:nth-child(2) { animation-delay: 0.2s; }
+    .bar:nth-child(3) { animation-delay: 0.4s; }
+    .bar:nth-child(4) { animation-delay: 0.1s; }
+    .bar:nth-child(5) { animation-delay: 0.3s; }
+
+    @keyframes wave {
+      0%, 100% { height: 8px; }
+      50% { height: 28px; background: #FF4D4D; }
+    }
+
     .status { font-weight: bold; margin-top: 15px; min-height: 24px; font-size: 16px; }
     .transcript-box {
       margin-top: 20px;
@@ -96,7 +141,17 @@
       <p>Adjective: <span class="word-highlight" id="adjective">fast</span></p>
     </div>
 
-    <button class="btn-mic" onclick="startListening()">🎤 Press & Speak</button>
+    <button class="btn-mic" id="micBtn" onclick="startListening()">🎤 Press & Speak</button>
+    
+    <!-- Soundwave Equalizer -->
+    <div class="soundwave" id="soundwave">
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+      <div class="bar"></div>
+    </div>
+
     <div class="status" id="status">Click button to speak...</div>
 
     <div class="transcript-box">
@@ -117,18 +172,42 @@
     let currentIdx = 0;
     let score = 0;
 
+    // Web Audio Sound Generator for Mic Start
+    function playMicBeep() {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Pitch (Hz)
+      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.2);
+    }
+
     function loadQuestion() {
       const q = questions[currentIdx];
       document.getElementById('animals').innerText = `${capitalize(q.animal1)} & ${capitalize(q.animal2)}`;
       document.getElementById('adjective').innerText = q.adjective;
       document.getElementById('status').innerText = "Click button to speak...";
+      document.getElementById('status').style.color = "#FFFFFF";
       document.getElementById('transcriptText').innerText = "Waiting for microphone input...";
       document.getElementById('nextBtn').style.display = 'none';
       document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
+      resetMicUI();
     }
 
     function capitalize(str) {
       return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function resetMicUI() {
+      const btn = document.getElementById('micBtn');
+      btn.classList.remove('listening');
+      btn.innerHTML = '🎤 Press & Speak';
+      document.getElementById('soundwave').classList.remove('active');
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -141,18 +220,34 @@
       recognition.lang = 'en-US';
 
       recognition.onstart = function() {
-        document.getElementById('status').innerText = "🎙️ Listening... Speak your sentence!";
+        playMicBeep(); // Audio Sound Effect
+        
+        // Visual Listening Indicators
+        const btn = document.getElementById('micBtn');
+        btn.classList.add('listening');
+        btn.innerHTML = '🔴 LISTENING... SPEAK NOW!';
+        document.getElementById('soundwave').classList.add('active');
+
+        document.getElementById('status').innerText = "🎙️ Microphone ACTIVE! Speak your full sentence.";
         document.getElementById('status').style.color = "#FFE66D";
       };
 
       recognition.onresult = function(event) {
+        resetMicUI();
         const spoken = event.results[0][0].transcript.toLowerCase();
         document.getElementById('transcriptText').innerText = `"${event.results[0][0].transcript}"`;
         
         checkAnswer(spoken);
       };
 
+      recognition.onspeechend = function() {
+        resetMicUI();
+        document.getElementById('status').innerText = "Processing answer...";
+        recognition.stop();
+      };
+
       recognition.onerror = function(event) {
+        resetMicUI();
         document.getElementById('status').innerText = "Error reading voice: " + event.error;
         document.getElementById('status').style.color = "#FF6B6B";
       };
@@ -165,20 +260,26 @@
     function checkAnswer(spokenText) {
       const q = questions[currentIdx];
       
-      // Smart check: Must contain animal1, animal2, comparative form, and 'than'
-      const hasAnimal1 = spokenText.includes(q.animal1);
-      const hasAnimal2 = spokenText.includes(q.animal2);
-      const hasComparative = spokenText.includes(q.comparative);
+      const pos1 = spokenText.indexOf(q.animal1);
+      const pos2 = spokenText.indexOf(q.animal2);
+      const posComp = spokenText.indexOf(q.comparative);
       const hasThan = spokenText.includes("than");
 
-      if (hasAnimal1 && hasAnimal2 && hasComparative && hasThan) {
+      // Logic Check:
+      // 1. All words present
+      // 2. Animal 1 appears BEFORE the comparative (e.g. "cheetah" before "faster")
+      // 3. Animal 2 appears AFTER the comparative (e.g. "cat" after "faster")
+      const isCorrectOrder = (pos1 !== -1) && (pos2 !== -1) && (posComp !== -1) && 
+                             (pos1 < posComp) && (posComp < pos2) && hasThan;
+
+      if (isCorrectOrder) {
         document.getElementById('status').innerText = "🎉 PERFECT! Great comparison sentence!";
         document.getElementById('status').style.color = "#70E000";
         score++;
         document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
         document.getElementById('nextBtn').style.display = 'inline-block';
       } else {
-        document.getElementById('status').innerText = `❌ Almost! Sentence must include "${q.animal1}", "${q.comparative}", "than", and "${q.animal2}".`;
+        document.getElementById('status').innerText = `❌ Incorrect order or missing details! Say: "${capitalize(q.animal1)} is ${q.comparative} than a ${q.animal2}".`;
         document.getElementById('status').style.color = "#FF6B6B";
       }
     }
