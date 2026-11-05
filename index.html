@@ -172,12 +172,13 @@
     let currentIdx = 0;
     let score = 0;
 
+    // Web Audio Sound Generator for Mic Start
     function playMicBeep() {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Pitch (Hz)
       gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
       osc.connect(gain);
@@ -215,3 +216,85 @@
       document.getElementById('status').innerText = "Speech recognition is not supported on this browser. Use Chrome.";
     } else {
       const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = function() {
+        playMicBeep(); // Audio Sound Effect
+        
+        // Visual Listening Indicators
+        const btn = document.getElementById('micBtn');
+        btn.classList.add('listening');
+        btn.innerHTML = '🔴 LISTENING... SPEAK NOW!';
+        document.getElementById('soundwave').classList.add('active');
+
+        document.getElementById('status').innerText = "🎙️ Microphone ACTIVE! Speak your full sentence.";
+        document.getElementById('status').style.color = "#FFE66D";
+      };
+
+      recognition.onresult = function(event) {
+        resetMicUI();
+        const spoken = event.results[0][0].transcript.toLowerCase();
+        document.getElementById('transcriptText').innerText = `"${event.results[0][0].transcript}"`;
+        
+        checkAnswer(spoken);
+      };
+
+      recognition.onspeechend = function() {
+        resetMicUI();
+        document.getElementById('status').innerText = "Processing answer...";
+        recognition.stop();
+      };
+
+      recognition.onerror = function(event) {
+        resetMicUI();
+        document.getElementById('status').innerText = "Error reading voice: " + event.error;
+        document.getElementById('status').style.color = "#FF6B6B";
+      };
+
+      function startListening() {
+        recognition.start();
+      }
+    }
+
+    function checkAnswer(spokenText) {
+      const q = questions[currentIdx];
+      
+      const pos1 = spokenText.indexOf(q.animal1);
+      const pos2 = spokenText.indexOf(q.animal2);
+      const posComp = spokenText.indexOf(q.comparative);
+      const hasThan = spokenText.includes("than");
+
+      // Logic Check:
+      // 1. All words present
+      // 2. Animal 1 appears BEFORE the comparative (e.g. "cheetah" before "faster")
+      // 3. Animal 2 appears AFTER the comparative (e.g. "cat" after "faster")
+      const isCorrectOrder = (pos1 !== -1) && (pos2 !== -1) && (posComp !== -1) && 
+                             (pos1 < posComp) && (posComp < pos2) && hasThan;
+
+      if (isCorrectOrder) {
+        document.getElementById('status').innerText = "🎉 PERFECT! Great comparison sentence!";
+        document.getElementById('status').style.color = "#70E000";
+        score++;
+        document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
+        document.getElementById('nextBtn').style.display = 'inline-block';
+      } else {
+        document.getElementById('status').innerText = `❌ Incorrect order or missing details! Say: "${capitalize(q.animal1)} is ${q.comparative} than a ${q.animal2}".`;
+        document.getElementById('status').style.color = "#FF6B6B";
+      }
+    }
+
+    function nextQuestion() {
+      currentIdx++;
+      if (currentIdx < questions.length) {
+        loadQuestion();
+      } else {
+        document.getElementById('status').innerText = `🏆 Game Completed! Final Score: ${score}/${questions.length}`;
+        document.getElementById('nextBtn').style.display = 'none';
+      }
+    }
+
+    loadQuestion();
+  </script>
+</body>
+</html>
