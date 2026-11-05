@@ -172,13 +172,12 @@
     let currentIdx = 0;
     let score = 0;
 
-    // Web Audio Sound Generator for Mic Start
     function playMicBeep() {
       const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = audioCtx.createOscillator();
       const gain = audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Pitch (Hz)
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
       gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
       osc.connect(gain);
@@ -220,9 +219,8 @@
       recognition.lang = 'en-US';
 
       recognition.onstart = function() {
-        playMicBeep(); // Audio Sound Effect
+        playMicBeep();
         
-        // Visual Listening Indicators
         const btn = document.getElementById('micBtn');
         btn.classList.add('listening');
         btn.innerHTML = '🔴 LISTENING... SPEAK NOW!';
@@ -259,27 +257,26 @@
 
     function checkAnswer(spokenText) {
       const q = questions[currentIdx];
-      
-      const pos1 = spokenText.indexOf(q.animal1);
-      const pos2 = spokenText.indexOf(q.animal2);
-      const posComp = spokenText.indexOf(q.comparative);
-      const hasThan = spokenText.includes("than");
+      const text = spokenText.toLowerCase();
 
-      // Logic Check:
-      // 1. All words present
-      // 2. Animal 1 appears BEFORE the comparative (e.g. "cheetah" before "faster")
-      // 3. Animal 2 appears AFTER the comparative (e.g. "cat" after "faster")
-      const isCorrectOrder = (pos1 !== -1) && (pos2 !== -1) && (posComp !== -1) && 
-                             (pos1 < posComp) && (posComp < pos2) && hasThan;
+      const posAnimal1 = text.indexOf(q.animal1);
+      const posAnimal2 = text.indexOf(q.animal2);
+      const posComparative = text.indexOf(q.comparative);
+      const posThan = text.indexOf("than");
 
-      if (isCorrectOrder) {
+      // Check required word existence and grammar sequence order
+      const hasAllWords = (posAnimal1 !== -1) && (posAnimal2 !== -1) && (posComparative !== -1) && (posThan !== -1);
+      const isGrammaticallyCorrect = (posAnimal1 < posComparative) && (posComparative < posThan) && (posThan < posAnimal2);
+
+      if (hasAllWords && isGrammaticallyCorrect) {
         document.getElementById('status').innerText = "🎉 PERFECT! Great comparison sentence!";
         document.getElementById('status').style.color = "#70E000";
         score++;
         document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
         document.getElementById('nextBtn').style.display = 'inline-block';
       } else {
-        document.getElementById('status').innerText = `❌ Incorrect order or missing details! Say: "${capitalize(q.animal1)} is ${q.comparative} than a ${q.animal2}".`;
+        // Clear error feedback without leaking exact answer text
+        document.getElementById('status').innerText = `❌ Not quite! Check your sentence order or make sure you compare ${capitalize(q.animal1)} to ${capitalize(q.animal2)}.`;
         document.getElementById('status').style.color = "#FF6B6B";
       }
     }
