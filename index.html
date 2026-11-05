@@ -172,19 +172,82 @@
     let currentIdx = 0;
     let score = 0;
 
-    // Web Audio Sound Generator for Mic Start
+    // Helper to obtain active AudioContext safely
+    function getAudioContext() {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      return ctx;
+    }
+
+    // Sound 1: Mic Start Beep (Short high ping)
     function playMicBeep() {
-      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // Pitch (Hz)
-      gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start();
-      osc.stop(audioCtx.currentTime + 0.2);
+      try {
+        const audioCtx = getAudioContext();
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+      } catch (e) {}
+    }
+
+    // Sound 2: Correct Answer Audio (Upbeat 2-Note Chime)
+    function playCorrectSound() {
+      try {
+        const audioCtx = getAudioContext();
+        if (!audioCtx) return;
+        
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.setValueAtTime(659.25, now + 0.15); // E5
+        osc.frequency.setValueAtTime(783.99, now + 0.3); // G5
+        
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.6);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.6);
+      } catch (e) {}
+    }
+
+    // Sound 3: Wrong Answer Audio (Low Buzz Error Tone)
+    function playWrongSound() {
+      try {
+        const audioCtx = getAudioContext();
+        if (!audioCtx) return;
+        
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(150, now);
+        osc.frequency.setValueAtTime(120, now + 0.2);
+        
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.00001, now + 0.4);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.4);
+      } catch (e) {}
     }
 
     function loadQuestion() {
@@ -211,18 +274,18 @@
     }
 
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
 
     if (!SpeechRecognition) {
       document.getElementById('status').innerText = "Speech recognition is not supported on this browser. Use Chrome.";
     } else {
-      const recognition = new SpeechRecognition();
+      recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.lang = 'en-US';
 
       recognition.onstart = function() {
-        playMicBeep(); // Audio Sound Effect
+        playMicBeep();
         
-        // Visual Listening Indicators
         const btn = document.getElementById('micBtn');
         btn.classList.add('listening');
         btn.innerHTML = '🔴 LISTENING... SPEAK NOW!';
@@ -243,43 +306,49 @@
       recognition.onspeechend = function() {
         resetMicUI();
         document.getElementById('status').innerText = "Processing answer...";
-        recognition.stop();
+        try { recognition.stop(); } catch(e){}
       };
 
       recognition.onerror = function(event) {
         resetMicUI();
-        document.getElementById('status').innerText = "Error reading voice: " + event.error;
+        document.getElementById('status').innerText = "Error: " + event.error + ". Click button to try again.";
         document.getElementById('status').style.color = "#FF6B6B";
       };
+    }
 
-      function startListening() {
+    function startListening() {
+      if (!recognition) return;
+      try {
         recognition.start();
+      } catch (e) {
+        recognition.stop();
+        setTimeout(() => recognition.start(), 200);
       }
     }
 
     function checkAnswer(spokenText) {
       const q = questions[currentIdx];
-      
-      const pos1 = spokenText.indexOf(q.animal1);
-      const pos2 = spokenText.indexOf(q.animal2);
-      const posComp = spokenText.indexOf(q.comparative);
-      const hasThan = spokenText.includes("than");
+      const text = spokenText.toLowerCase();
 
-      // Logic Check:
-      // 1. All words present
-      // 2. Animal 1 appears BEFORE the comparative (e.g. "cheetah" before "faster")
-      // 3. Animal 2 appears AFTER the comparative (e.g. "cat" after "faster")
-      const isCorrectOrder = (pos1 !== -1) && (pos2 !== -1) && (posComp !== -1) && 
-                             (pos1 < posComp) && (posComp < pos2) && hasThan;
+      const posAnimal1 = text.indexOf(q.animal1);
+      const posAnimal2 = text.indexOf(q.animal2);
+      const posComparative = text.indexOf(q.comparative);
+      const posThan = text.indexOf("than");
 
-      if (isCorrectOrder) {
+      // Check required word existence and grammar sequence order
+      const hasAllWords = (posAnimal1 !== -1) && (posAnimal2 !== -1) && (posComparative !== -1) && (posThan !== -1);
+      const isGrammaticallyCorrect = (posAnimal1 < posComparative) && (posComparative < posThan) && (posThan < posAnimal2);
+
+      if (hasAllWords && isGrammaticallyCorrect) {
+        playCorrectSound(); // Play Success Sound
         document.getElementById('status').innerText = "🎉 PERFECT! Great comparison sentence!";
         document.getElementById('status').style.color = "#70E000";
         score++;
         document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
         document.getElementById('nextBtn').style.display = 'inline-block';
       } else {
-        document.getElementById('status').innerText = `❌ Incorrect order or missing details! Say: "${capitalize(q.animal1)} is ${q.comparative} than a ${q.animal2}".`;
+        playWrongSound(); // Play Error Sound
+        document.getElementById('status').innerText = `❌ Not quite! Check your sentence order or make sure you compare ${capitalize(q.animal1)} to ${capitalize(q.animal2)}.`;
         document.getElementById('status').style.color = "#FF6B6B";
       }
     }
