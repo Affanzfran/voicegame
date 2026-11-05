@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Animal Comparison Voice Challenge</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1A3636;
+      color: #FFFFFF;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 20px;
+      box-sizing: border-box;
+    }
+    .card {
+      background: #40534C;
+      padding: 30px;
+      border-radius: 24px;
+      text-align: center;
+      max-width: 520px;
+      width: 100%;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+      border: 3px solid #677D6A;
+    }
+    h1 { color: #FFE66D; margin-top: 0; font-size: 26px; }
+    .score-badge {
+      background: #677D6A;
+      display: inline-block;
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-weight: bold;
+      margin-bottom: 15px;
+    }
+    .prompt-box {
+      background: #1A3636;
+      padding: 20px;
+      border-radius: 16px;
+      margin: 15px 0;
+      border: 2px dashed #70E000;
+    }
+    .prompt-box p { margin: 5px 0; color: #D6BD98; }
+    .word-highlight { color: #FFE66D; font-size: 22px; font-weight: bold; }
+    .btn-mic {
+      background: linear-gradient(135deg, #FF6B6B, #FFE66D);
+      border: none;
+      color: #1A3636;
+      font-size: 20px;
+      font-weight: 900;
+      padding: 16px 36px;
+      border-radius: 50px;
+      cursor: pointer;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.3);
+      transition: transform 0.2s;
+      margin-top: 10px;
+    }
+    .btn-mic:hover { transform: scale(1.05); }
+    .status { font-weight: bold; margin-top: 15px; min-height: 24px; font-size: 16px; }
+    .transcript-box {
+      margin-top: 20px;
+      background: #D6BD98;
+      color: #1A3636;
+      padding: 15px;
+      border-radius: 12px;
+      min-height: 50px;
+      font-size: 16px;
+      text-align: left;
+    }
+    .btn-next {
+      background: #70E000;
+      color: #1A3636;
+      border: none;
+      padding: 10px 24px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 30px;
+      cursor: pointer;
+      margin-top: 15px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <div class="score-badge" id="score">Score: 0 / 3</div>
+    <h1>🎙️ Animal Comparison Game</h1>
+    <p>Form a correct comparative sentence using these details:</p>
+    
+    <div class="prompt-box">
+      <p>Animals: <span class="word-highlight" id="animals">Cheetah & Cat</span></p>
+      <p>Adjective: <span class="word-highlight" id="adjective">fast</span></p>
+    </div>
+
+    <button class="btn-mic" onclick="startListening()">🎤 Press & Speak</button>
+    <div class="status" id="status">Click button to speak...</div>
+
+    <div class="transcript-box">
+      <strong>Your Speech:</strong>
+      <p id="transcriptText">Waiting for microphone input...</p>
+    </div>
+
+    <button class="btn-next" id="nextBtn" onclick="nextQuestion()">Next Question ➡️</button>
+  </div>
+
+  <script>
+    const questions = [
+      { animal1: "cheetah", animal2: "cat", adjective: "fast", comparative: "faster" },
+      { animal1: "elephant", animal2: "dog", adjective: "big", comparative: "bigger" },
+      { animal1: "giraffe", animal2: "monkey", adjective: "tall", comparative: "taller" }
+    ];
+
+    let currentIdx = 0;
+    let score = 0;
+
+    function loadQuestion() {
+      const q = questions[currentIdx];
+      document.getElementById('animals').innerText = `${capitalize(q.animal1)} & ${capitalize(q.animal2)}`;
+      document.getElementById('adjective').innerText = q.adjective;
+      document.getElementById('status').innerText = "Click button to speak...";
+      document.getElementById('transcriptText').innerText = "Waiting for microphone input...";
+      document.getElementById('nextBtn').style.display = 'none';
+      document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
+    }
+
+    function capitalize(str) {
+      return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      document.getElementById('status').innerText = "Speech recognition is not supported on this browser. Use Chrome.";
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.lang = 'en-US';
+
+      recognition.onstart = function() {
+        document.getElementById('status').innerText = "🎙️ Listening... Speak your sentence!";
+        document.getElementById('status').style.color = "#FFE66D";
+      };
+
+      recognition.onresult = function(event) {
+        const spoken = event.results[0][0].transcript.toLowerCase();
+        document.getElementById('transcriptText').innerText = `"${event.results[0][0].transcript}"`;
+        
+        checkAnswer(spoken);
+      };
+
+      recognition.onerror = function(event) {
+        document.getElementById('status').innerText = "Error reading voice: " + event.error;
+        document.getElementById('status').style.color = "#FF6B6B";
+      };
+
+      function startListening() {
+        recognition.start();
+      }
+    }
+
+    function checkAnswer(spokenText) {
+      const q = questions[currentIdx];
+      
+      // Smart check: Must contain animal1, animal2, comparative form, and 'than'
+      const hasAnimal1 = spokenText.includes(q.animal1);
+      const hasAnimal2 = spokenText.includes(q.animal2);
+      const hasComparative = spokenText.includes(q.comparative);
+      const hasThan = spokenText.includes("than");
+
+      if (hasAnimal1 && hasAnimal2 && hasComparative && hasThan) {
+        document.getElementById('status').innerText = "🎉 PERFECT! Great comparison sentence!";
+        document.getElementById('status').style.color = "#70E000";
+        score++;
+        document.getElementById('score').innerText = `Score: ${score} / ${questions.length}`;
+        document.getElementById('nextBtn').style.display = 'inline-block';
+      } else {
+        document.getElementById('status').innerText = `❌ Almost! Sentence must include "${q.animal1}", "${q.comparative}", "than", and "${q.animal2}".`;
+        document.getElementById('status').style.color = "#FF6B6B";
+      }
+    }
+
+    function nextQuestion() {
+      currentIdx++;
+      if (currentIdx < questions.length) {
+        loadQuestion();
+      } else {
+        document.getElementById('status').innerText = `🏆 Game Completed! Final Score: ${score}/${questions.length}`;
+        document.getElementById('nextBtn').style.display = 'none';
+      }
+    }
+
+    loadQuestion();
+  </script>
+</body>
+</html>
